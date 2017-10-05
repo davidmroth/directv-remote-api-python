@@ -7,6 +7,28 @@ More details:
     http://www.sbcatest.com/DTV-MD-0058-DIRECTVSet-topInformationforInstallers-V2.2.pdf
 '''
 
+'''
+# Valid commands
+'FA81', // Standby
+'FA82', // Active
+'FA83', // GetPrimaryStatus
+'FA84', // GetCommandVersion
+'FA87', // GetCurrentChannel
+'FA90', // GetSignalQuality
+'FA91', // GetCurrentTime
+'FA92', // GetUserCommand
+'FA93', // EnableUserEntry
+'FA94', // DisableUserEntry
+'FA95', // GetReturnValue
+'FA96', // Reboot
+'FAA5', // SendUserCommand
+'FAA6', // OpenUserChannel
+'FA9A', // GetTuner
+'FA8A', // GetPrimaryStatusMT
+'FA8B', // GetCurrentChannelMT
+'FA9D', // GetSignalQualityMT
+'FA9F', // OpenUserChannelMT
+
 # Valid keys
 'power'
 'poweron'
@@ -51,15 +73,21 @@ More details:
 '9'
 'dash'
 'enter'
+'''
+
 
 class DTV_Remote:
     def __init__(self, ipAddress):
         self.ipAddress = ipAddress
-        self.__validate()
+        valid = self.__validate()
+
+        if not valid[0]:
+            raise Exception(valid[1])
 
     def __defaultCallback(self, result):
-        print result
-        print
+        #print result
+        #print
+        return result
 
     def __validate(self, options = {}):
         '''
@@ -69,14 +97,11 @@ class DTV_Remote:
         succeeds, we will then try to contact the DirecTV set-top-box.
         '''
         path = '/info/getOptions'
-        oldCallback = None
         options = options if bool(options) else {}
 
-        if not 'callback' in options or not callable(options['callback']):
-            options['callback'] = self.__defaultCallback
-
+        # Validate IP Address
         if not re.match("^\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}$", self.ipAddress):
-            options['callback']({
+            self.__defaultCallback({
                 'status' : {
                     'code'          : 405,
                     'commandResult' : 1,
@@ -85,45 +110,21 @@ class DTV_Remote:
                 }
             })
 
-        # We have to validate the `callback` option here since we have to
-        # do some callback juggling so we can deliver customized messages
-        # based on the result of the request.
-        if not options['callback'] or not callable(options['callback']):
-            raise Exception("options['callback'] is not optional and must be a function.")
+            return (False, "Not a valid IP address.")
 
-        # The callback passed in so we can invoke it later with our
-        # customized response object.
-        oldCallback = options['callback']
-
-        def callback(data):
-            if data['options']:
+        def callback(data = False):
+            if data and 'options' in data:
                 # We got a valid response.
-                response = {
-                    'status' : {
-                        'code'          : 200,
-                        'commandResult' : 0,
-                        'msg'           : 'Host is a DirecTV set-top-box',
-                        'query'         : path
-                    }
-                }
+                return (True, 'Host not appears to be a DirecTV set-top-box')
 
             else:
-                # We got a valid response but it did not have the expected
-                # payload.
-                response = {
-                    'status' : {
-                        'code'          : 404,
-                        'commandResult' : 1,
-                        'msg'           : 'Host does not appear to be a DirecTV set-top-box',
-                        'query'         : path
-                    }
-                }
+                return (False, 'Host does not appear to be a DirecTV set-top-box')
 
-            #Fire the callback with our customized response
-            options['callback'] = callback
-            oldCallback(response);
+        #Fire the callback with our customized response
+        options['callback'] = callback
 
-        self.makeRequest({
+        #TODO: Build dynamic functions base on reply from '/info/getOptions'
+        return self.makeRequest({
             'path'    : path,
             'options' : options
         })
@@ -172,14 +173,17 @@ class DTV_Remote:
                 #print requestQuery
 
         #Make the call, fire the callback with the results.
-        requestOptions['options']['callback'](urllib.urlopen(requestUrl + requestQuery).read());
+        try:
+            return requestOptions['options']['callback'](urllib.urlopen(requestUrl + requestQuery).read())
+        except:
+            return (False, 'Host error!')
 
     def getTuned(self, options = {}):
         '''
         Retrieves the current program information for the currently tuned
         channel.
         '''
-        self.makeRequest({
+        return self.makeRequest({
             'path'    : '/tv/getTuned',
             'options' : options
         })
@@ -193,7 +197,7 @@ class DTV_Remote:
         if options and not options['major']:
             raise Exception('options.major is not optional.')
 
-        self.makeRequest({
+        return self.makeRequest({
             'path':       '/tv/tune',
             'options':    options
         })
@@ -203,7 +207,7 @@ class DTV_Remote:
         Retrieve the list of DirecTV set-top-box locations the set-top-box
         is aware of.
         '''
-        self.makeRequest({
+        return self.makeRequest({
             'path'    : '/info/getLocations',
             'options' : options
         })
@@ -213,7 +217,7 @@ class DTV_Remote:
         Retrieve the current software version information for the DirecTV
         set-top-box.
         '''
-        self.makeRequest({
+        return self.makeRequest({
             'path'    : '/info/getVersion',
             'options' : options,
         })
@@ -223,7 +227,7 @@ class DTV_Remote:
         Retrieve the operating mode the DirecTV set-top-box is currently
         operating in.
         '''
-        self.makeRequest({
+        return self.makeRequest({
             'path'    : '/info/mode',
             'options' : options
         })
@@ -235,12 +239,12 @@ class DTV_Remote:
         the [available keys](#keys) portion of the documentaiton.  You can
         also pass in a `hold` option but it is not required.  For available
         holds, see the [available holds](#holds) portion of the
-        documentation.
+        documentation. * See valid keys above *
         '''
         if options and not options['key']:
-            raise Exception('options.key is not optional.')
+            raise Exception('options. key is not optional.')
 
-        self.makeRequest({
+        return self.makeRequest({
             'path'    : '/remote/processKey',
             'options' : options
         })
@@ -250,20 +254,21 @@ class DTV_Remote:
         Sends a serial command request to the DirecTV set-top-box.  The
         `cmd` option is required and must be valid.  For available commands
         see the [available commands](#commands) portion of the documentaiton.
+        * See valid commands above *
         '''
         if options and not options['cmd']:
             raise Exception('options.cmd is not optional.')
 
-        self.makeRequest({
+        return self.makeRequest({
             'path'    : '/serial/processCommand',
             'options' : options
         })
 
     def getOptions(self, options = {}):
         ''' Retrieve the list of available APIs the DirecTV set-top-box supports. '''
-        self.makeRequest({
-            path    : '/info/getOptions',
-            options : options
+        return self.makeRequest({
+            'path'    : '/info/getOptions',
+            'options' : options
         })
 
     def getProgInfo(self, options = {}):
@@ -275,15 +280,19 @@ class DTV_Remote:
         if options and not options['major']:
             raise Exception('options.major is not optional.')
 
-        self.makeRequest({
+        return self.makeRequest({
             'path'    : '/tv/getProgInfo',
             'options' : options
         })
 
 
-''' How to use: '''
-#remote = DTV_Remote("192.168.xx.xx")
-#remote.getProgInfo({'major': '202'})
-#remote.processKey({'key':'power'})
-#remote.getTuned()
-#remote.tune()
+# Example
+# remote = DTV_Remote("192.168.86.51")
+
+'''
+print remote.getOptions()
+print remote.getProgInfo({'major': '202'})
+print remote.processKey({'key':'power'})
+print remote.getTuned()
+print remote.tune()
+'''
